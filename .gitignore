@@ -106,3 +106,5 @@ build/
 *.un~
 Session.vim
 .netrwhist
+
+test.c

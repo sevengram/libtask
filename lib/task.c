@@ -1,59 +1,19 @@
 /* Copyright (c) 2005 Russ Cox, MIT; see COPYRIGHT */
 
 #include "taskimpl.h"
-#include <fcntl.h>
 
-int taskdebuglevel;
-int taskcount;
-int tasknswitch;
+int taskcount;      // 当前OK的协程数目, 不包括系统级别的协程
+int tasknswitch;    // 总协程切换次数
 int taskexitval;
-Task *taskrunning;
+Task *taskrunning;  // 当前正在运行的协程指针
 
-Context taskschedcontext;
-Tasklist taskrunqueue;
+Context taskschedcontext;   // 这个就是主协程的上下文, 进行切换的时候会换起这个上下文, 也就是taskscheduler函数
+Tasklist taskrunqueue;      // 所有可运行的协程的双向链表, 不包括当前正在运行的
 
-Task **alltask;
-int nalltask;
-
-static char *argv0;
+Task **alltask;     // 协程数组
+int nalltask;       // alltask数组中下一个空槽位, 当为64的倍数时需要扩容
 
 static void contextswitch(Context *from, Context *to);
-
-static void
-taskdebug(char *fmt, ...)
-{
-    va_list arg;
-    char buf[128];
-    Task *t;
-    char *p;
-    static int fd = -1;
-
-    return;
-    va_start(arg, fmt);
-    vfprint(1, fmt, arg);
-    va_end(arg);
-    return;
-
-    if (fd < 0) {
-        p = strrchr(argv0, '/');
-        if (p)
-            p++;
-        else
-            p = argv0;
-        snprint(buf, sizeof buf, "/tmp/%s.tlog", p);
-        if ((fd = open(buf, O_CREAT | O_WRONLY, 0666)) < 0)
-            fd = open("/dev/null", O_WRONLY);
-    }
-
-    va_start(arg, fmt);
-    vsnprint(buf, sizeof buf, fmt, arg);
-    va_end(arg);
-    t = taskrunning;
-    if (t)
-        fprint(fd, "%d.%d: %s\n", getpid(), t->id, buf);
-    else
-        fprint(fd, "%d._: %s\n", getpid(), buf);
-}
 
 static void
 taskstart(uint y, uint x)
@@ -66,11 +26,8 @@ taskstart(uint y, uint x)
     z |= y;
     t = (Task *) z;
 
-    //print("taskstart %p\n", t);
     t->startfn(t->startarg);
-    //print("taskexits %p\n", t);
     taskexit(0);
-    //print("not reacehd\n");
 }
 
 static int taskidgen;
@@ -86,7 +43,7 @@ taskalloc(void (*fn)(void *), void *arg, uint stack)
     /* allocate the task and stack together */
     t = malloc(sizeof *t + stack);
     if (t == nil) {
-        fprint(2, "taskalloc malloc: %r\n");
+        fprintf(stderr, "taskalloc malloc error\n");
         abort();
     }
     memset(t, 0, sizeof *t);
@@ -103,7 +60,7 @@ taskalloc(void (*fn)(void *), void *arg, uint stack)
 
     /* must initialize with current context */
     if (getcontext(&t->context.uc) < 0) {
-        fprint(2, "getcontext: %r\n");
+        fprintf(stderr, "getcontext error\n");
         abort();
     }
 
@@ -123,7 +80,6 @@ taskalloc(void (*fn)(void *), void *arg, uint stack)
      * function that takes some number of word-sized variables,
      * and on 64-bit machines pointers are bigger than words.
      */
-//print("make %p\n", t);
     z = (ulong) t;
     y = z;
     z >>= 16;    /* hide undefined 32-bit shift from 32-bit compilers */
@@ -145,7 +101,7 @@ taskcreate(void (*fn)(void *), void *arg, uint stack)
     if (nalltask % 64 == 0) {
         alltask = realloc(alltask, (nalltask + 64) * sizeof(alltask[0]));
         if (alltask == nil) {
-            fprint(2, "out of memory\n");
+            fprintf(stderr, "out of memory\n");
             abort();
         }
     }
@@ -214,8 +170,8 @@ static void
 contextswitch(Context *from, Context *to)
 {
     if (swapcontext(&from->uc, &to->uc) < 0) {
-        fprint(2, "swapcontext failed: %r\n");
-        assert(0);
+        fprintf(stderr, "swapcontext failed \n");
+        abort();
     }
 }
 
@@ -224,23 +180,19 @@ taskscheduler(void)
 {
     int i;
     Task *t;
-
-    taskdebug("scheduler enter");
     for (; ;) {
         if (taskcount == 0)
             exit(taskexitval);
         t = taskrunqueue.head;
         if (t == nil) {
-            fprint(2, "no runnable tasks! %d tasks stalled\n", taskcount);
+            fprintf(stderr, "no runnable tasks! %d tasks stalled\n", taskcount);
             exit(1);
         }
         deltask(&taskrunqueue, t);
         t->ready = 0;
         taskrunning = t;
         tasknswitch++;
-        taskdebug("run %d (%s)", t->id, t->name);
         contextswitch(&taskschedcontext, &t->context);
-//print("back in scheduler\n");
         taskrunning = nil;
         if (t->exiting) {
             if (!t->system)
@@ -259,9 +211,6 @@ taskdata(void)
     return &taskrunning->udata;
 }
 
-/*
- * debugging
- */
 void
 taskname(char *fmt, ...)
 {
@@ -270,7 +219,7 @@ taskname(char *fmt, ...)
 
     t = taskrunning;
     va_start(arg, fmt);
-    vsnprint(t->name, sizeof t->name, fmt, arg);
+    vsnprintf(t->name, sizeof t->name, fmt, arg);
     va_end(arg);
 }
 
@@ -288,7 +237,7 @@ taskstate(char *fmt, ...)
 
     t = taskrunning;
     va_start(arg, fmt);
-    vsnprint(t->state, sizeof t->name, fmt, arg);
+    vsnprintf(t->state, sizeof t->name, fmt, arg);
     va_end(arg);
 }
 
@@ -305,9 +254,8 @@ needstack(int n)
 
     t = taskrunning;
 
-    if ((char *) &t <= (char *) t->stk
-        || (char *) &t - (char *) t->stk < 256 + n) {
-        fprint(2, "task stack overflow: &t=%p tstk=%p n=%d\n", &t, t->stk, 256 + n);
+    if ((char *) &t <= (char *) t->stk || (char *) &t - (char *) t->stk < 256 + n) {
+        fprintf(stderr, "task stack overflow: &t=%p tstk=%p n=%d\n", &t, t->stk, 256 + n);
         abort();
     }
 }
@@ -319,7 +267,7 @@ taskinfo(int s)
     Task *t;
     char *extra;
 
-    fprint(2, "task list:\n");
+    fprintf(stderr, "task list:\n");
     for (i = 0; i < nalltask; i++) {
         t = alltask[i];
         if (t == taskrunning)
@@ -328,7 +276,7 @@ taskinfo(int s)
             extra = " (ready)";
         else
             extra = "";
-        fprint(2, "%6d%c %-20s %s%s\n",
+        fprintf(stderr, "%6d%c %-20s %s%s\n",
                t->id, t->system ? 's' : ' ',
                t->name, t->state, extra);
     }
@@ -363,7 +311,6 @@ main(int argc, char **argv)
     sigaction(SIGINFO, &sa, &osa);
 #endif
 
-    argv0 = argv[0];
     taskargc = argc;
     taskargv = argv;
 
@@ -371,7 +318,7 @@ main(int argc, char **argv)
         mainstacksize = 256 * 1024;
     taskcreate(taskmainstart, nil, mainstacksize);
     taskscheduler();
-    fprint(2, "taskscheduler returned in main!\n");
+    fprintf(stderr, "taskscheduler returned in main!\n");
     abort();
     return 0;
 }

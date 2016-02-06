@@ -58,14 +58,14 @@ makecontext(ucontext_t *ucp, void (*func)(void), int argc, ...)
 {
     int *sp;
 
-    sp = (int*)ucp->uc_stack.ss_sp+ucp->uc_stack.ss_size/4;
+    sp = (int*) ucp->uc_stack.ss_sp + ucp->uc_stack.ss_size / 4;  // 移动堆栈到末尾, 然后从后面开始将参数拷贝上去
     sp -= argc;
-    sp = (void*)((uintptr_t)sp - (uintptr_t)sp%16); /* 16-align for OS X */
+    sp = (void*)((uintptr_t)sp - (uintptr_t)sp%16);     /* 16-align for OS X */
     memmove(sp, &argc+1, argc*sizeof(int));
 
     *--sp = 0;      /* return address */
-    ucp->uc_mcontext.mc_eip = (long)func;
-    ucp->uc_mcontext.mc_esp = (int)sp;
+    ucp->uc_mcontext.mc_eip = (long)func;    // 设置eip位置func
+    ucp->uc_mcontext.mc_esp = (int)sp;       // 堆栈寄存器
 }
 #endif
 

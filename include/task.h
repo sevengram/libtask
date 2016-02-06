@@ -19,7 +19,7 @@ typedef struct Tasklist Tasklist;
 
 int anyready(void);
 
-int taskcreate(void (*f)(void *arg), void *arg, unsigned int stacksize);
+int taskcreate(void (*f)(void *), void *arg, unsigned int stacksize);
 
 void taskexit(int);
 
@@ -119,9 +119,9 @@ typedef struct Channel Channel;
 
 enum
 {
-    CHANEND,
-    CHANSND,
-    CHANRCV,
+    CHANEND, // 结束
+    CHANSND, // 发送
+    CHANRCV, // 接收
     CHANNOP,
     CHANNOBLK,
 };
@@ -131,8 +131,8 @@ struct Alt
     Channel *c;
     void *v;
     unsigned int op;
-    Task *task;
-    Alt *xalt;
+    Task *task;     // 设置协程是哪一个
+    Alt *xalt;      // 属于哪个Alt数组
 };
 
 struct Altarray

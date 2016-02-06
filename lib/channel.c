@@ -9,7 +9,7 @@ chancreate(int elemsize, int bufsize)
 
     c = malloc(sizeof *c + bufsize * elemsize);
     if (c == nil) {
-        fprint(2, "chancreate malloc: %r");
+        fprintf(stderr, "chancreate malloc\n");
         exit(1);
     }
     memset(c, 0, sizeof *c);
@@ -109,7 +109,7 @@ altdequeue(Alt *a)
 
     ar = chanarray(a->c, a->op);
     if (ar == nil) {
-        fprint(2, "bad use of altdequeue op=%d\n", a->op);
+        fprintf(stderr, "bad use of altdequeue op=%d\n", a->op);
         abort();
     }
 
@@ -118,7 +118,7 @@ altdequeue(Alt *a)
             delarray(ar, i);
             return;
         }
-    fprint(2, "cannot find self in altdq\n");
+    fprintf(stderr, "cannot find self in altdq\n");
     abort();
 }
 
@@ -219,13 +219,10 @@ altexec(Alt *a)
         altcopy(a, nil);
 }
 
-#define dbgalt 0
-
 int
 chanalt(Alt *a)
 {
     int i, j, ncan, n, canblock;
-    Channel *c;
     Task *t;
 
     needstack(512);
@@ -238,14 +235,9 @@ chanalt(Alt *a)
         a[i].task = t;
         a[i].xalt = a;
     }
-    if (dbgalt) print("alt ");
     ncan = 0;
     for (i = 0; i < n; i++) {
-        c = a[i].c;
-        if (dbgalt) print(" %c:", "esrnb"[a[i].op]);
-        if (dbgalt) { if (c->name) print("%s", c->name); else print("%p", c); }
         if (altcanexec(&a[i])) {
-            if (dbgalt) print("*");
             ncan++;
         }
     }
@@ -254,20 +246,12 @@ chanalt(Alt *a)
         for (i = 0; i < n; i++) {
             if (altcanexec(&a[i])) {
                 if (j-- == 0) {
-                    if (dbgalt) {
-                        c = a[i].c;
-                        print(" => %c:", "esrnb"[a[i].op]);
-                        if (c->name) print("%s", c->name); else print("%p", c);
-                        print("\n");
-                    }
                     altexec(&a[i]);
                     return i;
                 }
             }
         }
     }
-    if (dbgalt)print("\n");
-
     if (!canblock)
         return -1;
 

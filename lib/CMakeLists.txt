@@ -9,7 +9,6 @@ set(LIBTASK_SRC
         fd.c
         net.c
         qlock.c
-        print.c
         rendez.c
         task.c
         asm.S)

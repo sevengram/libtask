@@ -1,5 +1,7 @@
 /* Copyright (c) 2005-2006 Russ Cox, MIT; see COPYRIGHT */
 
+#define USE_UCONTEXT 1
+
 #if defined(__sun__)
 #   define __EXTENSIONS__ 1 /* SunOS */
 #   if defined(__SunOS5_6__) || defined(__SunOS5_7__) || defined(__SunOS5_8__)
@@ -9,23 +11,22 @@
 #   endif
 #endif
 
-#define USE_UCONTEXT 1
-
 #if defined(__OpenBSD__) || defined(__mips__)
-#undef USE_UCONTEXT
-#define USE_UCONTEXT 0
+#   undef USE_UCONTEXT
+#   define USE_UCONTEXT 0
 #endif
 
 #if defined(__APPLE__)
-#include <AvailabilityMacros.h>
-#if defined(MAC_OS_X_VERSION_10_5)
-#undef USE_UCONTEXT
-#define USE_UCONTEXT 0
-#endif
+#   include <AvailabilityMacros.h>
+#   if defined(MAC_OS_X_VERSION_10_5)
+#       undef USE_UCONTEXT
+#       define USE_UCONTEXT 0
+#   endif
 #endif
 
 #include <errno.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <unistd.h>
 #include <string.h>
 #include <assert.h>
@@ -62,34 +63,6 @@ typedef unsigned char uchar;
 typedef unsigned short ushort;
 typedef unsigned long long uvlong;
 typedef long long vlong;
-
-#define print task_print
-#define fprint task_fprint
-#define snprint task_snprint
-#define seprint task_seprint
-#define vprint task_vprint
-#define vfprint task_vfprint
-#define vsnprint task_vsnprint
-#define vseprint task_vseprint
-#define strecpy task_strecpy
-
-int print(char *, ...);
-
-int fprint(int, char *, ...);
-
-char *snprint(char *, uint, char *, ...);
-
-char *seprint(char *, char *, char *, ...);
-
-int vprint(char *, va_list);
-
-int vfprint(int, char *, va_list);
-
-char *vsnprint(char *, uint, char *, va_list);
-
-char *vseprint(char *, char *, char *, va_list);
-
-char *strecpy(char *, char *, char *);
 
 #if defined(__FreeBSD__) && __FreeBSD__ < 5
 extern  int     getmcontext(mcontext_t*);
@@ -156,24 +129,22 @@ struct Context
 
 struct Task
 {
-    char name[256];    // offset known to acid
+    char name[256];     // offset known to acid
     char state[256];
-    Task *next;
+    Task *next;         // 协程的双向链表
     Task *prev;
     Task *allnext;
     Task *allprev;
-    Context context;
-    uvlong alarmtime;
-    uint id;
-    uchar *stk;
-    uint stksize;
-    int exiting;
-    int alltaskslot;
-    int system;
-    int ready;
-
-    void (*startfn)(void *);
-
+    Context context;    // 实际上就是ucontext_t的包装, 后者就是系统里面的ucontext结构
+    uvlong alarmtime;   // 如果是延时协程, 这个字段指定延时时间
+    uint id;            // 协程id
+    uchar *stk;         // 堆栈起始位置, 使用的时候是按向下使用的方式的
+    uint stksize;       // 堆栈长度
+    int exiting;        // 是否已经退出
+    int alltaskslot;    // alltask[]的当前占用最高槽位数, 总数能到alltaskslot + 64 - alltaskslot%64
+    int system;         // 是否为系统协程, 在计算是否还有用户协程时, 会忽略 system = 1 的协程
+    int ready;          // 为1代表在运行状态
+    void (*startfn)(void *);    // 协程对应函数
     void *startarg;
     void *udata;
 };

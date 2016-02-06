@@ -46,7 +46,7 @@ fdtask(void *v)
         if (poll(pollfd, npollfd, ms) < 0) {
             if (errno == EINTR)
                 continue;
-            fprint(2, "poll: %s\n", strerror(errno));
+            fprintf(stderr, "poll: %s\n", strerror(errno));
             taskexitall(0);
         }
 
@@ -122,7 +122,7 @@ fdwait(int fd, int rw)
     }
 
     if (npollfd >= MAXFD) {
-        fprint(2, "too many poll file descriptors\n");
+        fprintf(stderr, "too many poll file descriptors\n");
         abort();
     }
 

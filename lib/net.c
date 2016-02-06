@@ -66,7 +66,7 @@ netaccept(int fd, char *server, int *port)
     }
     if (server) {
         ip = (uchar *) &sa.sin_addr;
-        snprint(server, 16, "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
+        snprintf(server, 16, "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
     }
     if (port)
         *port = ntohs(sa.sin_port);
